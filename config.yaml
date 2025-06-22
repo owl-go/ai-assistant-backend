@@ -1,0 +1,70 @@
+# AI智能体后台管理系统配置文件
+
+# 数据库配置
+database:
+  host: localhost
+  port: 3306
+  user: root
+  password: password
+  name: ai_assistant
+  charset: utf8mb4
+  parse_time: true
+  loc: Local
+  max_idle_conns: 10
+  max_open_conns: 100
+
+# Redis配置
+redis:
+  host: localhost
+  port: 6379
+  password: ""
+  db: 0
+  pool_size: 10
+  min_idle_conns: 5
+
+# JWT配置
+jwt:
+  secret: your-secret-key-change-in-production
+  expire_hours: 24
+
+# 服务器配置
+server:
+  port: 8080
+  mode: debug
+  pprof_port: 6060
+  cors:
+    allowed_origins:
+      - http://localhost:3000
+      - http://localhost:5173
+    allowed_headers:
+      - Origin
+      - Content-Type
+      - Accept
+      - Authorization
+    allowed_methods:
+      - GET
+      - POST
+      - PUT
+      - DELETE
+      - PATCH
+      - OPTIONS
+
+# 文件上传配置
+upload:
+  path: ./uploads
+  max_file_size: 10485760  # 10MB
+  allowed_types:
+    - .jpg
+    - .jpeg
+    - .png
+    - .gif
+    - .pdf
+    - .doc
+    - .docx
+    - .txt
+
+# 应用配置
+app:
+  name: AI智能体后台管理系统
+  version: 1.0.0
+  description: 基于Vue3 + Go的AI智能体后台管理系统 
