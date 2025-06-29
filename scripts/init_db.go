@@ -10,7 +10,7 @@ import (
 
 func main() {
 	// 加载配置文件
-	if err := config.LoadConfig("../config.yaml"); err != nil {
+	if err := config.LoadConfig("./config.yaml"); err != nil {
 		log.Fatal("加载配置文件失败:", err)
 	}
 

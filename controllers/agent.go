@@ -6,6 +6,7 @@ import (
 
 	"ai-assistant-backend/config"
 	"ai-assistant-backend/models"
+	"ai-assistant-backend/utils"
 
 	"github.com/gin-gonic/gin"
 )
@@ -26,27 +27,32 @@ type UpdateAgentRequest struct {
 
 // GetAgents 获取智能体列表
 func GetAgents(c *gin.Context) {
+	userInterface, err := utils.GetUserFromContext(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"code":    401,
+			"message": "用户未登录",
+		})
+		return
+	}
+	user, ok := userInterface.(utils.Claims)
+	userID := user.UserID
+
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"code":    401,
+			"message": "用户未登录",
+		})
+		return
+	}
 	var agents []models.Agent
-	if err := config.DB.Find(&agents).Error; err != nil {
+	if err := config.DB.Where("user_id = ?", userID).Find(&agents).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"code":    500,
 			"message": "获取智能体列表失败",
 		})
 		return
 	}
-
-	// 为每个智能体加载轮播图
-	for i := range agents {
-		var carouselImages []models.AgentCarouselImage
-		config.DB.Where("agent_id = ?", agents[i].ID).Order("sort").Find(&carouselImages)
-
-		var imageURLs []string
-		for _, img := range carouselImages {
-			imageURLs = append(imageURLs, img.ImageURL)
-		}
-		agents[i].CarouselImages = imageURLs
-	}
-
 	c.JSON(http.StatusOK, gin.H{
 		"code":    200,
 		"message": "获取成功",

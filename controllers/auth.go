@@ -1,6 +1,8 @@
 package controllers
 
 import (
+	"context"
+	"fmt"
 	"net/http"
 
 	"ai-assistant-backend/config"
@@ -53,7 +55,7 @@ func Login(c *gin.Context) {
 	}
 
 	// 生成JWT token并存储到Redis
-	token, err := utils.GenerateToken(user.ID, user.Username)
+	token, err := utils.GenerateToken(user.ID, user.Username, user.Role)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"code":    500,
@@ -61,7 +63,15 @@ func Login(c *gin.Context) {
 		})
 		return
 	}
-
+	//将token存到redis
+	err = config.RedisClient.Set(context.Background(), fmt.Sprintf("token:%s", token), user.ID, 0).Err()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code":    500,
+			"message": "保存令牌失败",
+		})
+		return
+	}
 	c.JSON(http.StatusOK, gin.H{
 		"code":    200,
 		"message": "登录成功",
@@ -72,6 +82,7 @@ func Login(c *gin.Context) {
 				"username": user.Username,
 				"email":    user.Email,
 				"avatar":   user.Avatar,
+				"role":     user.Role,
 			},
 		},
 	})
@@ -98,11 +109,27 @@ func Logout(c *gin.Context) {
 
 // RefreshToken 刷新token
 func RefreshToken(c *gin.Context) {
-	userID := c.GetUint("user_id")
-	username := c.GetString("username")
+	userInterface, err := utils.GetUserFromContext(c)
+
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"code":    401,
+			"message": "用户未登录",
+		})
+		return
+	}
+
+	user, ok := userInterface.(utils.Claims)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"code":    401,
+			"message": "用户未登录",
+		})
+		return
+	}
 
 	// 生成新token
-	token, err := utils.RefreshToken(userID, username)
+	token, err := utils.RefreshToken(user.UserID, user.Username, user.Role)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"code":    500,
@@ -208,6 +235,7 @@ func GetProfile(c *gin.Context) {
 			"username": user.Username,
 			"email":    user.Email,
 			"avatar":   user.Avatar,
+			"role":     user.Role,
 		},
 	})
 }

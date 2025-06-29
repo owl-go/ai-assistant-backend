@@ -57,9 +57,8 @@ func AuthMiddleware() gin.HandlerFunc {
 			return
 		}
 
-		// 将用户信息存储到上下文中
-		c.Set("user_id", claims.UserID)
-		c.Set("username", claims.Username)
+		// 使用公共方法将完整的用户对象存储到上下文中
+		utils.SetUserToContext(c, claims)
 		c.Next()
 	}
 }

@@ -5,7 +5,7 @@ database:
   host: localhost
   port: 3306
   user: root
-  password: password
+  password: 123456
   name: ai_assistant
   charset: utf8mb4
   parse_time: true

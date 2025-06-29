@@ -12,6 +12,7 @@ type User struct {
 	Avatar    string    `json:"avatar"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
+	Role      uint8     `json:"role"`
 }
 
 func (User) TableName() string {

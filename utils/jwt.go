@@ -14,11 +14,12 @@ import (
 type Claims struct {
 	UserID   uint   `json:"user_id"`
 	Username string `json:"username"`
+	Role     uint8  `json:"role"`
 	jwt.RegisteredClaims
 }
 
 // GenerateToken 生成JWT令牌并存储到Redis
-func GenerateToken(userID uint, username string) (string, error) {
+func GenerateToken(userID uint, username string, role uint8) (string, error) {
 	if config.GlobalConfig == nil {
 		return "", errors.New("配置未加载")
 	}
@@ -27,6 +28,7 @@ func GenerateToken(userID uint, username string) (string, error) {
 	claims := Claims{
 		UserID:   userID,
 		Username: username,
+		Role:     role,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Duration(config.GlobalConfig.JWT.ExpireHours) * time.Hour)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
@@ -43,10 +45,10 @@ func GenerateToken(userID uint, username string) (string, error) {
 
 	// 将token存储到Redis，设置过期时间
 	ctx := context.Background()
-	redisKey := fmt.Sprintf("token:%d", userID)
+	redisKey := fmt.Sprintf("token:%s", tokenString)
 	expiration := time.Duration(config.GlobalConfig.JWT.ExpireHours) * time.Hour
 
-	err = config.RedisClient.Set(ctx, redisKey, tokenString, expiration).Err()
+	err = config.RedisClient.Set(ctx, redisKey, userID, expiration).Err()
 	if err != nil {
 		return "", fmt.Errorf("存储token到Redis失败: %v", err)
 	}
@@ -82,16 +84,16 @@ func ValidateToken(userID uint, tokenString string) (bool, error) {
 	}
 
 	ctx := context.Background()
-	redisKey := fmt.Sprintf("token:%d", userID)
+	redisKey := fmt.Sprintf("token:%s", tokenString)
 
 	// 从Redis获取存储的token
-	storedToken, err := config.RedisClient.Get(ctx, redisKey).Result()
+	storedUserID, err := config.RedisClient.Get(ctx, redisKey).Result()
 	if err != nil {
 		return false, fmt.Errorf("从Redis获取token失败: %v", err)
 	}
 
 	// 比较token是否一致
-	if storedToken != tokenString {
+	if storedUserID != fmt.Sprintf("%d", userID) {
 		return false, errors.New("token不匹配")
 	}
 
@@ -116,12 +118,12 @@ func InvalidateToken(userID uint) error {
 }
 
 // RefreshToken 刷新token
-func RefreshToken(userID uint, username string) (string, error) {
+func RefreshToken(userID uint, username string, role uint8) (string, error) {
 	// 先使旧token失效
 	if err := InvalidateToken(userID); err != nil {
 		return "", fmt.Errorf("使旧token失效失败: %v", err)
 	}
 
 	// 生成新token
-	return GenerateToken(userID, username)
+	return GenerateToken(userID, username, role)
 }
