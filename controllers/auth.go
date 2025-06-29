@@ -3,7 +3,6 @@ package controllers
 import (
 	"context"
 	"fmt"
-	"net/http"
 
 	"ai-assistant-backend/config"
 	"ai-assistant-backend/models"
@@ -27,65 +26,46 @@ type RegisterRequest struct {
 func Login(c *gin.Context) {
 	var req LoginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"code":    400,
-			"message": "请求参数错误",
-			"error":   err.Error(),
-		})
+		utils.ValidationError(c, err.Error())
 		return
 	}
 
 	// 查找用户
 	var user models.User
 	if err := config.DB.Where("username = ?", req.Username).First(&user).Error; err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"code":    401,
-			"message": "用户名或密码错误",
-		})
+		utils.LoginFailed(c)
 		return
 	}
 
 	// 验证密码
 	if !utils.CheckPassword(req.Password, user.Password) {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"code":    401,
-			"message": "用户名或密码错误",
-		})
+		utils.LoginFailed(c)
 		return
 	}
 
 	// 生成JWT token并存储到Redis
 	token, err := utils.GenerateToken(user.ID, user.Username, user.Role)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"code":    500,
-			"message": "生成令牌失败",
-		})
+		utils.InternalServerError(c, "生成令牌失败")
 		return
 	}
 	//将token存到redis
 	err = config.RedisClient.Set(context.Background(), fmt.Sprintf("token:%s", token), user.ID, 0).Err()
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"code":    500,
-			"message": "保存令牌失败",
-		})
+		utils.InternalServerError(c, "保存令牌失败")
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{
-		"code":    200,
-		"message": "登录成功",
-		"data": gin.H{
-			"token": token,
-			"user": gin.H{
-				"id":       user.ID,
-				"username": user.Username,
-				"email":    user.Email,
-				"avatar":   user.Avatar,
-				"role":     user.Role,
-			},
+
+	utils.Success(c, gin.H{
+		"token": token,
+		"user": gin.H{
+			"id":       user.ID,
+			"username": user.Username,
+			"email":    user.Email,
+			"avatar":   user.Avatar,
+			"role":     user.Role,
 		},
-	})
+	}, "登录成功")
 }
 
 // Logout 用户登出
@@ -94,97 +74,58 @@ func Logout(c *gin.Context) {
 
 	// 使token失效
 	if err := utils.InvalidateToken(userID); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"code":    500,
-			"message": "登出失败",
-		})
+		utils.InternalServerError(c, "登出失败")
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"code":    200,
-		"message": "登出成功",
-	})
+	utils.SuccessWithMessage(c, "登出成功")
 }
 
 // RefreshToken 刷新token
 func RefreshToken(c *gin.Context) {
-	userInterface, err := utils.GetUserFromContext(c)
+	user, err := utils.GetUserFromContext(c)
 
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"code":    401,
-			"message": "用户未登录",
-		})
+		utils.Unauthorized(c, "用户未登录")
 		return
 	}
-
-	user, ok := userInterface.(utils.Claims)
-	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"code":    401,
-			"message": "用户未登录",
-		})
-		return
-	}
-
 	// 生成新token
 	token, err := utils.RefreshToken(user.UserID, user.Username, user.Role)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"code":    500,
-			"message": "刷新令牌失败",
-		})
+		utils.InternalServerError(c, "刷新令牌失败")
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"code":    200,
-		"message": "刷新成功",
-		"data": gin.H{
-			"token": token,
-		},
-	})
+	utils.Success(c, gin.H{
+		"token": token,
+	}, "刷新成功")
 }
 
 // Register 用户注册
 func Register(c *gin.Context) {
 	var req RegisterRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"code":    400,
-			"message": "请求参数错误",
-			"error":   err.Error(),
-		})
+		utils.ValidationError(c, err.Error())
 		return
 	}
 
 	// 检查用户名是否已存在
 	var existingUser models.User
 	if err := config.DB.Where("username = ?", req.Username).First(&existingUser).Error; err == nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"code":    400,
-			"message": "用户名已存在",
-		})
+		utils.UserAlreadyExists(c, "用户名")
 		return
 	}
 
 	// 检查邮箱是否已存在
 	if err := config.DB.Where("email = ?", req.Email).First(&existingUser).Error; err == nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"code":    400,
-			"message": "邮箱已存在",
-		})
+		utils.UserAlreadyExists(c, "邮箱")
 		return
 	}
 
 	// 加密密码
 	hashedPassword, err := utils.HashPassword(req.Password)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"code":    500,
-			"message": "密码加密失败",
-		})
+		utils.InternalServerError(c, "密码加密失败")
 		return
 	}
 
@@ -196,22 +137,15 @@ func Register(c *gin.Context) {
 	}
 
 	if err := config.DB.Create(&user).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"code":    500,
-			"message": "用户创建失败",
-		})
+		utils.CreateFailed(c, "用户")
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"code":    200,
-		"message": "注册成功",
-		"data": gin.H{
-			"id":       user.ID,
-			"username": user.Username,
-			"email":    user.Email,
-		},
-	})
+	utils.Success(c, gin.H{
+		"id":       user.ID,
+		"username": user.Username,
+		"email":    user.Email,
+	}, "注册成功")
 }
 
 // GetProfile 获取用户信息
@@ -220,22 +154,15 @@ func GetProfile(c *gin.Context) {
 
 	var user models.User
 	if err := config.DB.First(&user, userID).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{
-			"code":    404,
-			"message": "用户不存在",
-		})
+		utils.UserNotFound(c)
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"code":    200,
-		"message": "获取成功",
-		"data": gin.H{
-			"id":       user.ID,
-			"username": user.Username,
-			"email":    user.Email,
-			"avatar":   user.Avatar,
-			"role":     user.Role,
-		},
-	})
+	utils.Success(c, gin.H{
+		"id":       user.ID,
+		"username": user.Username,
+		"email":    user.Email,
+		"avatar":   user.Avatar,
+		"role":     user.Role,
+	}, "获取成功")
 }

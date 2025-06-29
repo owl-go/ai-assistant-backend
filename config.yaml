@@ -63,6 +63,17 @@ upload:
     - .docx
     - .txt
 
+# MinIO配置
+minio:
+  endpoint: localhost:9000
+  access_key: admin
+  secret_key: password123
+  bucket: upload
+  location: 
+  use_ssl: false
+  force_path_style: true
+  url_expire_hours: 24  # 链接有效时间（小时）
+
 # 应用配置
 app:
   name: AI智能体后台管理系统

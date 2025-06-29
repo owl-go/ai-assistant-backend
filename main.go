@@ -37,6 +37,11 @@ func main() {
 		log.Fatal("初始化Redis失败:", err)
 	}
 
+	// 初始化MinIO
+	if err := config.InitMinIO(); err != nil {
+		log.Fatal("初始化MinIO失败:", err)
+	}
+
 	// 自动迁移数据库表
 	config.DB.AutoMigrate(
 		&models.User{},

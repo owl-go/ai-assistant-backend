@@ -12,6 +12,7 @@ import (
 )
 
 type CreateAgentRequest struct {
+	AppId          string   `json:"app_id" binding:"required"`
 	Name           string   `json:"name" binding:"required"`
 	Logo           string   `json:"logo"`
 	WelcomeMsg     string   `json:"welcome_msg"`
@@ -27,37 +28,17 @@ type UpdateAgentRequest struct {
 
 // GetAgents 获取智能体列表
 func GetAgents(c *gin.Context) {
-	userInterface, err := utils.GetUserFromContext(c)
+	user, err := utils.GetUserFromContext(c)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"code":    401,
-			"message": "用户未登录",
-		})
-		return
-	}
-	user, ok := userInterface.(utils.Claims)
-	userID := user.UserID
-
-	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"code":    401,
-			"message": "用户未登录",
-		})
+		utils.Unauthorized(c, "用户未登录")
 		return
 	}
 	var agents []models.Agent
-	if err := config.DB.Where("user_id = ?", userID).Find(&agents).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"code":    500,
-			"message": "获取智能体列表失败",
-		})
+	if err := config.DB.Where("user_id = ?", user.UserID).Find(&agents).Error; err != nil {
+		utils.GetFailed(c, "智能体列表")
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{
-		"code":    200,
-		"message": "获取成功",
-		"data":    agents,
-	})
+	utils.Success(c, agents, "获取成功")
 }
 
 // GetAgent 获取单个智能体
@@ -100,6 +81,12 @@ func GetAgent(c *gin.Context) {
 
 // CreateAgent 创建智能体
 func CreateAgent(c *gin.Context) {
+	user, err := utils.GetUserFromContext(c)
+	if err != nil {
+		utils.Unauthorized(c, "用户未登录")
+		return
+	}
+
 	var req CreateAgentRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
@@ -112,6 +99,8 @@ func CreateAgent(c *gin.Context) {
 
 	// 创建智能体
 	agent := models.Agent{
+		AppID:      req.AppId,
+		UserID:     user.UserID,
 		Name:       req.Name,
 		Logo:       req.Logo,
 		WelcomeMsg: req.WelcomeMsg,

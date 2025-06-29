@@ -6,6 +6,8 @@ import (
 
 type Agent struct {
 	ID             uint      `json:"id" gorm:"primary_key"`
+	AppID          string    `json:"app_id"`
+	UserID         uint      `json:"user_id"`
 	Name           string    `json:"name" gorm:"not null"`
 	Logo           string    `json:"logo"`
 	Status         string    `json:"status" gorm:"default:'offline'"` // online, offline

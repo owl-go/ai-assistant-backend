@@ -19,11 +19,15 @@ func SetUserToContext(c *gin.Context, user interface{}) {
 }
 
 // GetUserFromContext 从上下文中获取完整的用户对象
-func GetUserFromContext(c *gin.Context) (interface{}, error) {
+func GetUserFromContext(c *gin.Context) (*Claims, error) {
 	userInterface, exists := c.Get(UserKey)
 	if !exists {
 		return nil, errors.New("用户对象不存在于上下文中")
 	}
+	user, ok := userInterface.(*Claims)
+	if !ok {
+		return nil, errors.New("用户对象类型不匹配")
+	}
 
-	return userInterface, nil
+	return user, nil
 }

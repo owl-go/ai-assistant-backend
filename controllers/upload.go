@@ -1,13 +1,10 @@
 package controllers
 
 import (
-	"fmt"
-	"net/http"
-	"os"
-	"path/filepath"
-	"time"
-
 	"ai-assistant-backend/config"
+	"ai-assistant-backend/utils"
+
+	"fmt"
 
 	"github.com/gin-gonic/gin"
 )
@@ -15,118 +12,198 @@ import (
 // UploadFile 文件上传
 func UploadFile(c *gin.Context) {
 	if config.GlobalConfig == nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"code":    500,
-			"message": "配置未加载",
-		})
+		utils.InternalServerError(c, "配置未加载")
 		return
 	}
 
 	// 获取上传的文件
 	file, err := c.FormFile("file")
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"code":    400,
-			"message": "文件上传失败",
-			"error":   err.Error(),
-		})
+		utils.BadRequestWithDetail(c, "文件上传失败", err.Error())
 		return
 	}
 
-	// 检查文件大小
-	if file.Size > config.GlobalConfig.Upload.MaxFileSize {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"code":    400,
-			"message": "文件大小超过限制",
-		})
+	// 使用MinIO上传文件
+	objectName, fileURL, err := utils.UploadFileWithValidation(
+		file,
+		config.GlobalConfig.Upload.AllowedTypes,
+		config.GlobalConfig.Upload.MaxFileSize,
+		"uploads", // 文件前缀
+	)
+	if err != nil {
+		utils.BadRequestWithDetail(c, "文件上传失败", err.Error())
+		return
+	}
+	// 返回文件信息
+	utils.Success(c, gin.H{
+		"filename":    file.Filename,
+		"size":        file.Size,
+		"url":         fileURL,
+		"object_name": objectName,
+	}, "上传成功")
+}
+
+// GetPresignedUploadURL 获取预签名上传URL
+func GetPresignedUploadURL(c *gin.Context) {
+	filename := c.Query("filename")
+	if filename == "" {
+		utils.BadRequest(c, "文件名不能为空")
 		return
 	}
 
-	// 检查文件类型
-	ext := filepath.Ext(file.Filename)
-	allowed := false
-	for _, allowedType := range config.GlobalConfig.Upload.AllowedTypes {
-		if ext == allowedType {
-			allowed = true
-			break
+	// 生成对象名称
+	objectName := utils.GenerateObjectName(filename, "uploads")
+
+	// 获取预签名URL
+	uploader := utils.NewMinIOUploader()
+	presignedURL, err := uploader.GetPresignedURL(objectName, 3600) // 1小时有效期
+	if err != nil {
+		utils.InternalServerError(c, "生成预签名URL失败")
+		return
+	}
+
+	utils.Success(c, gin.H{
+		"upload_url":  presignedURL,
+		"object_name": objectName,
+		"expires_in":  3600,
+	}, "获取预签名URL成功")
+}
+
+// GetPresignedDownloadURL 获取预签名下载URL
+func GetPresignedDownloadURL(c *gin.Context) {
+	objectName := c.Query("object_name")
+	if objectName == "" {
+		utils.BadRequest(c, "对象名称不能为空")
+		return
+	}
+
+	// 获取预签名下载URL
+	uploader := utils.NewMinIOUploader()
+	presignedURL, err := uploader.GetPresignedGetURL(objectName, 3600) // 1小时有效期
+	if err != nil {
+		utils.InternalServerError(c, "生成预签名下载URL失败")
+		return
+	}
+
+	utils.Success(c, gin.H{
+		"download_url": presignedURL,
+		"expires_in":   3600,
+	}, "获取预签名下载URL成功")
+}
+
+// DeleteFile 删除文件
+func DeleteFile(c *gin.Context) {
+	objectName := c.Query("object_name")
+	if objectName == "" {
+		utils.BadRequest(c, "对象名称不能为空")
+		return
+	}
+
+	// 删除文件
+	uploader := utils.NewMinIOUploader()
+	err := uploader.DeleteFile(objectName)
+	if err != nil {
+		utils.InternalServerError(c, "删除文件失败")
+		return
+	}
+
+	utils.SuccessWithMessage(c, "文件删除成功")
+}
+
+// ListFiles 列出文件
+func ListFiles(c *gin.Context) {
+	prefix := c.Query("prefix")
+	recursive := c.Query("recursive") == "true"
+
+	// 列出文件
+	uploader := utils.NewMinIOUploader()
+	files, err := uploader.ListFiles(prefix, recursive)
+	if err != nil {
+		utils.InternalServerError(c, "列出文件失败")
+		return
+	}
+
+	// 转换为简化的文件信息
+	var fileList []gin.H
+	for _, file := range files {
+		fileList = append(fileList, gin.H{
+			"name":          file.Key,
+			"size":          file.Size,
+			"last_modified": file.LastModified,
+			"content_type":  file.ContentType,
+		})
+	}
+
+	utils.Success(c, gin.H{
+		"files": fileList,
+		"total": len(fileList),
+	}, "获取文件列表成功")
+}
+
+// GetFileInfo 获取文件信息
+func GetFileInfo(c *gin.Context) {
+	objectName := c.Query("object_name")
+	if objectName == "" {
+		utils.BadRequest(c, "对象名称不能为空")
+		return
+	}
+
+	// 获取文件信息
+	uploader := utils.NewMinIOUploader()
+	fileInfo, err := uploader.GetFileInfo(objectName)
+	if err != nil {
+		utils.NotFound(c, "文件不存在")
+		return
+	}
+
+	utils.Success(c, gin.H{
+		"name":          fileInfo.Key,
+		"size":          fileInfo.Size,
+		"content_type":  fileInfo.ContentType,
+		"last_modified": fileInfo.LastModified,
+		"etag":          fileInfo.ETag,
+	}, "获取文件信息成功")
+}
+
+// GetFileAccessURL 获取文件访问URL
+func GetFileAccessURL(c *gin.Context) {
+	objectName := c.Query("object_name")
+	if objectName == "" {
+		utils.BadRequest(c, "对象名称不能为空")
+		return
+	}
+
+	// 获取有效时间参数
+	expireHoursStr := c.Query("expire_hours")
+	expireHours := 0
+	if expireHoursStr != "" {
+		if _, err := fmt.Sscanf(expireHoursStr, "%d", &expireHours); err != nil {
+			utils.BadRequest(c, "有效时间参数格式错误")
+			return
 		}
 	}
 
-	if !allowed {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"code":    400,
-			"message": "不支持的文件类型",
-		})
+	// 获取临时访问URL
+	uploader := utils.NewMinIOUploader()
+	fileURL, err := uploader.GetTemporaryFileURL(objectName, expireHours)
+	if err != nil {
+		utils.InternalServerError(c, "生成文件访问URL失败")
 		return
 	}
 
-	// 创建上传目录
-	uploadPath := config.GlobalConfig.Upload.Path
-	if uploadPath == "" {
-		uploadPath = "./uploads"
-	}
-
-	// 按日期创建子目录
-	dateDir := time.Now().Format("2006-01-02")
-	fullPath := filepath.Join(uploadPath, dateDir)
-
-	if err := os.MkdirAll(fullPath, 0755); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"code":    500,
-			"message": "创建目录失败",
-		})
+	// 获取文件信息
+	fileInfo, err := uploader.GetFileInfo(objectName)
+	if err != nil {
+		utils.NotFound(c, "文件不存在")
 		return
 	}
 
-	// 生成唯一文件名
-	timestamp := time.Now().UnixNano()
-	filename := fmt.Sprintf("%d_%s", timestamp, file.Filename)
-	filePath := filepath.Join(fullPath, filename)
-
-	// 保存文件
-	if err := c.SaveUploadedFile(file, filePath); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"code":    500,
-			"message": "保存文件失败",
-		})
-		return
-	}
-
-	// 返回文件信息
-	fileURL := fmt.Sprintf("/uploads/%s/%s", dateDir, filename)
-
-	c.JSON(http.StatusOK, gin.H{
-		"code":    200,
-		"message": "上传成功",
-		"data": gin.H{
-			"filename": file.Filename,
-			"size":     file.Size,
-			"url":      fileURL,
-			"path":     filePath,
-		},
-	})
-}
-
-// ServeFile 提供文件访问
-func ServeFile(c *gin.Context) {
-	filename := c.Param("filename")
-	dateDir := c.Param("date")
-
-	uploadPath := config.GlobalConfig.Upload.Path
-	if uploadPath == "" {
-		uploadPath = "./uploads"
-	}
-
-	filePath := filepath.Join(uploadPath, dateDir, filename)
-
-	// 检查文件是否存在
-	if _, err := os.Stat(filePath); os.IsNotExist(err) {
-		c.JSON(http.StatusNotFound, gin.H{
-			"code":    404,
-			"message": "文件不存在",
-		})
-		return
-	}
-
-	c.File(filePath)
+	utils.Success(c, gin.H{
+		"url":           fileURL,
+		"object_name":   objectName,
+		"size":          fileInfo.Size,
+		"content_type":  fileInfo.ContentType,
+		"last_modified": fileInfo.LastModified,
+		"expire_hours":  expireHours,
+	}, "获取文件访问URL成功")
 }

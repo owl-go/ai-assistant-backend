@@ -15,6 +15,7 @@ type Config struct {
 	JWT      JWTConfig      `yaml:"jwt"`
 	Server   ServerConfig   `yaml:"server"`
 	Upload   UploadConfig   `yaml:"upload"`
+	MinIO    MinIOConfig    `yaml:"minio"`
 	App      AppConfig      `yaml:"app"`
 }
 
@@ -68,6 +69,18 @@ type UploadConfig struct {
 	Path         string   `yaml:"path"`
 	MaxFileSize  int64    `yaml:"max_file_size"`
 	AllowedTypes []string `yaml:"allowed_types"`
+}
+
+// MinIOConfig MinIO配置
+type MinIOConfig struct {
+	Endpoint       string `yaml:"endpoint"`
+	AccessKey      string `yaml:"access_key"`
+	SecretKey      string `yaml:"secret_key"`
+	Bucket         string `yaml:"bucket"`
+	Location       string `yaml:"location"`
+	UseSSL         bool   `yaml:"use_ssl"`
+	ForcePathStyle bool   `yaml:"force_path_style"`
+	URLExpireHours int    `yaml:"url_expire_hours"` // 链接有效时间（小时）
 }
 
 // AppConfig 应用配置
